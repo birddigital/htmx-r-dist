@@ -1,0 +1,190 @@
+/**
+ * htmx-r CSS Theme System
+ * A minimal, customizable CSS foundation for htmx-r components
+ */
+
+:root {
+  /* Colors */
+  --htmx-r-primary: #6366f1;
+  --htmx-r-secondary: #8b5cf6;
+  --htmx-r-success: #10b981;
+  --htmx-r-danger: #ef4444;
+  --htmx-r-warning: #f59e0b;
+  --htmx-r-info: #3b82f6;
+  
+  /* Grays */
+  --htmx-r-gray-dark: #1f2937;
+  --htmx-r-gray: #6b7280;
+  --htmx-r-gray-medium: #d1d5db;
+  --htmx-r-gray-light: #f3f4f6;
+  
+  /* Gradients */
+  --htmx-r-gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --htmx-r-gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  --htmx-r-gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  
+  /* Spacing */
+  --htmx-r-spacing-xs: 0.25rem;
+  --htmx-r-spacing-sm: 0.5rem;
+  --htmx-r-spacing-md: 1rem;
+  --htmx-r-spacing-lg: 1.5rem;
+  --htmx-r-spacing-xl: 2rem;
+  --htmx-r-spacing-2xl: 3rem;
+  
+  /* Border Radius */
+  --htmx-r-radius-sm: 0.25rem;
+  --htmx-r-radius-md: 0.5rem;
+  --htmx-r-radius-lg: 0.75rem;
+  --htmx-r-radius-xl: 1rem;
+  --htmx-r-radius-full: 9999px;
+  
+  /* Shadows */
+  --htmx-r-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --htmx-r-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --htmx-r-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --htmx-r-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  /* Transitions */
+  --htmx-r-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --htmx-r-transition-base: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --htmx-r-transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Typography */
+  --htmx-r-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --htmx-r-font-mono: 'Monaco', 'Menlo', 'Courier New', monospace;
+  
+  /* Z-index layers */
+  --htmx-r-z-dropdown: 100;
+  --htmx-r-z-sticky: 200;
+  --htmx-r-z-modal: 1000;
+  --htmx-r-z-toast: 2000;
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--htmx-r-font-sans);
+  line-height: 1.6;
+  color: var(--htmx-r-gray-dark);
+}
+
+/* Button styles */
+.htmx-r-btn {
+  padding: var(--htmx-r-spacing-sm) var(--htmx-r-spacing-lg);
+  border-radius: var(--htmx-r-radius-md);
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--htmx-r-transition-base);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--htmx-r-spacing-sm);
+}
+
+.htmx-r-btn-primary {
+  background: var(--htmx-r-primary);
+  color: white;
+}
+
+.htmx-r-btn-primary:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: var(--htmx-r-shadow-md);
+}
+
+.htmx-r-btn-secondary {
+  background: var(--htmx-r-secondary);
+  color: white;
+}
+
+.htmx-r-btn-danger {
+  background: var(--htmx-r-danger);
+  color: white;
+}
+
+/* Card styles */
+.htmx-r-card {
+  background: white;
+  border-radius: var(--htmx-r-radius-xl);
+  padding: var(--htmx-r-spacing-xl);
+  box-shadow: var(--htmx-r-shadow-md);
+  border: 1px solid var(--htmx-r-gray-medium);
+}
+
+/* Form styles */
+.htmx-r-input {
+  padding: var(--htmx-r-spacing-md);
+  border: 1px solid var(--htmx-r-gray-medium);
+  border-radius: var(--htmx-r-radius-md);
+  font-size: 1rem;
+  font-family: inherit;
+  transition: border-color var(--htmx-r-transition-fast);
+}
+
+.htmx-r-input:focus {
+  outline: none;
+  border-color: var(--htmx-r-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+/* Modal styles */
+.htmx-r-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: var(--htmx-r-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.htmx-r-modal-content {
+  background: white;
+  border-radius: var(--htmx-r-radius-xl);
+  padding: var(--htmx-r-spacing-xl);
+  max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--htmx-r-shadow-xl);
+  position: relative;
+}
+
+/* Utility classes */
+.htmx-r-hidden {
+  display: none !important;
+}
+
+.htmx-r-flex {
+  display: flex;
+}
+
+.htmx-r-flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.htmx-r-gap-sm {
+  gap: var(--htmx-r-spacing-sm);
+}
+
+.htmx-r-gap-md {
+  gap: var(--htmx-r-spacing-md);
+}
+
+.htmx-r-gap-lg {
+  gap: var(--htmx-r-spacing-lg);
+}
+
+/* Responsive utilities */
+@media (max-width: 768px) {
+  .htmx-r-modal-content {
+    max-width: 95%;
+  }
+}
