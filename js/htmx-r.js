@@ -4,6 +4,26 @@
  *
  * Extends HTMX's philosophy: Declarative, HTML-first, no inline JavaScript
  * State lives in HTML attributes, CSS handles reactivity
+ *
+ * Core attributes:
+ *   data-state-{key}="{value}"          Declare state on a container (hx-ext="reactive")
+ *   data-when="{key}:{value}"           Show element when state matches; hide otherwise
+ *   hx-state-set="{key}:{value}"        Set state to a specific value on click
+ *   hx-state-toggle="{key}"             Cycle state through values on click
+ *   hx-state-on-request="{key}:{value}" Set state when HTMX request begins
+ *   hx-state-on-response="{key}:{value}"Set state when HTMX response arrives
+ *   hx-state-on-error="{key}:{value}"   Set state on HTMX error
+ *   hx-state-on-swap="{key}:{value}"    Set state after HTMX DOM swap
+ *   hx-state-persist="true"            Persist state to localStorage
+ *   hx-state-sync-url="{param}"         Mirror state to URL query param
+ *   data-state-value="{key}"            Sync input value from state (state → input)
+ *
+ * Binding extensions (v1.1):
+ *   hx-state-on-input="{key}"           Mirror input.value to state on each keystroke
+ *   hx-state-on-input="{key}:length"    Mirror input.value.length to state on each keystroke
+ *   data-state-text="{key}"             Render state value as element textContent
+ *   data-class-when="{key}:{val}:{cls}" Add CSS classes when state matches; requires
+ *                                       data-class-default="{cls}" for the inactive state
  */
 
 (function() {
@@ -277,7 +297,7 @@
     }));
   });
 
-  // Sync form values with state
+  // Sync form values with state (state → input, for data-state-value)
   document.addEventListener('htmx-r:state-change', function(e) {
     const { key, value } = e.detail;
     const container = e.target;
@@ -318,6 +338,133 @@
     });
   });
 
+  // ── BINDING EXTENSIONS v1.1 ───────────────────────────────────────────
+
+  /**
+   * hx-state-on-input  —  input → state binding (one-way, on each keystroke)
+   *
+   * Mirrors an input element's value (or a property of it) to a state key
+   * whenever the user types. The state container must already declare
+   * data-state-{key} as an ancestor.
+   *
+   * Usage:
+   *   hx-state-on-input="key"          stores el.value as state key
+   *   hx-state-on-input="key:length"   stores el.value.length as state key
+   *   hx-state-on-input="key:checked"  stores el.checked (boolean inputs)
+   *
+   * Example — character counter:
+   *   <div data-state-char-count="0" hx-ext="reactive">
+   *     <input hx-state-on-input="char-count:length" maxlength="17">
+   *     <span data-state-text="char-count">0</span>/17
+   *   </div>
+   */
+  document.addEventListener('input', function(e) {
+    const attr = e.target.getAttribute('hx-state-on-input');
+    if (!attr) return;
+
+    const colonIdx = attr.indexOf(':');
+    const key   = colonIdx === -1 ? attr.trim() : attr.slice(0, colonIdx).trim();
+    const prop  = colonIdx === -1 ? null         : attr.slice(colonIdx + 1).trim();
+
+    if (!key) return;
+
+    const rawValue = e.target.value;
+    const value = prop ? String(rawValue[prop] !== undefined ? rawValue[prop] : rawValue) : rawValue;
+
+    const container = findStateContainer(e.target, key);
+    if (!container) return;
+
+    container.setAttribute('data-state-' + key, value);
+    persistState(container, key, value);
+    syncToURL(container, key, value);
+
+    container.dispatchEvent(new CustomEvent('htmx-r:state-change', {
+      detail: { key, value, element: e.target },
+      bubbles: true
+    }));
+  });
+
+  /**
+   * data-state-text  —  state → textContent binding
+   *
+   * Renders the current state value as the textContent of any element
+   * marked with data-state-text="{key}". Updates live on every state change.
+   * Initial value is set during initStateContainers via htmx-r:state-change.
+   *
+   * Usage:
+   *   <span data-state-text="char-count">0</span>
+   *
+   * Pairs naturally with hx-state-on-input for character counters,
+   * live computed values, and derived displays.
+   */
+  document.addEventListener('htmx-r:state-change', function(e) {
+    const { key, value } = e.detail;
+
+    // Update all matching text elements anywhere in the document
+    // (not just inside the container — allows text displays to live outside state scope)
+    document.querySelectorAll('[data-state-text="' + key + '"]').forEach(function(el) {
+      el.textContent = value;
+    });
+  });
+
+  /**
+   * data-class-when  —  state → CSS class binding
+   *
+   * Adds a set of CSS classes to an element when a state key matches a value,
+   * and removes them (restoring data-class-default) when it does not.
+   * Eliminates the need for Alpine.js :class bindings for active-state UI.
+   *
+   * Usage:
+   *   data-class-when="{key}:{value}:{class1} {class2} ..."
+   *   data-class-default="{class1} {class2} ..."   (optional fallback classes)
+   *
+   * Example — condition toggle buttons (New / Used / CPO):
+   *   <div data-state-condition="new" hx-ext="reactive">
+   *     <button hx-state-set="condition:new"
+   *             data-class-when="condition:new:bg-blue-600 text-white"
+   *             data-class-default="bg-white text-gray-600">New</button>
+   *     <button hx-state-set="condition:used"
+   *             data-class-when="condition:used:bg-blue-600 text-white"
+   *             data-class-default="bg-white text-gray-600">Used</button>
+   *   </div>
+   *
+   * Note: The element does NOT need to be inside the state container —
+   * class updates are applied document-wide so overlay UIs work correctly.
+   */
+  document.addEventListener('htmx-r:state-change', function(e) {
+    const { key, value } = e.detail;
+
+    // Find all elements with data-class-when starting with this key
+    document.querySelectorAll('[data-class-when^="' + key + ':"]').forEach(function(el) {
+      const attr = el.getAttribute('data-class-when');
+
+      // Parse format: "key:matchValue:class1 class2 ..."
+      // Use indexOf to support colons inside class names (unlikely but safe)
+      const firstColon  = attr.indexOf(':');
+      const secondColon = attr.indexOf(':', firstColon + 1);
+      if (firstColon === -1 || secondColon === -1) return;
+
+      const whenKey     = attr.slice(0, firstColon).trim();
+      const whenValue   = attr.slice(firstColon + 1, secondColon).trim();
+      const activeClasses   = attr.slice(secondColon + 1).trim().split(/\s+/).filter(Boolean);
+      const defaultClasses  = (el.getAttribute('data-class-default') || '').split(/\s+/).filter(Boolean);
+
+      if (whenKey !== key) return;
+
+      if (value === whenValue) {
+        // Activate: remove default classes, add active classes
+        defaultClasses.forEach(function(c) { el.classList.remove(c); });
+        activeClasses.forEach(function(c)  { el.classList.add(c);    });
+      } else {
+        // Deactivate: remove active classes, restore default classes
+        activeClasses.forEach(function(c)  { el.classList.remove(c); });
+        defaultClasses.forEach(function(c) { el.classList.add(c);    });
+      }
+    });
+  });
+
+  // ── INITIALIZATION ────────────────────────────────────────────────────
+
   // Find all state containers in a subtree (universal — no hardcoded names)
   function findStateContainersIn(root) {
     const containers = [];
@@ -352,6 +499,8 @@
       restoreState(container);
 
       // Trigger initial state sync for all state attributes
+      // This fires htmx-r:state-change for each key, which drives
+      // data-when, data-state-text, data-class-when, and data-state-value
       Array.from(container.attributes).forEach(attr => {
         if (attr.name.startsWith('data-state-')) {
           const key = attr.name.replace('data-state-', '');
@@ -377,7 +526,7 @@
     initStateContainers(findStateContainersIn(target));
   });
 
-  // Helper: Get state value programmatically
+  // Helper: Get/set state programmatically
   window.htmxR = {
     getState: function(element, key) {
       const container = findStateContainer(element, key);
@@ -398,5 +547,5 @@
     }
   };
 
-  console.log('✓ HTMX-R (Reactive) extension loaded');
+  console.log('✓ HTMX-R (Reactive) v1.1 loaded — input binding, state-text, class-when');
 })();

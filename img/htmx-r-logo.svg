@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 130" fill="none">
+  <defs>
+
+    <!-- Band gradient: warm gold with highlight sweep -->
+    <linearGradient id="bandGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#B8860B"/>
+      <stop offset="35%"  stop-color="#FFD700"/>
+      <stop offset="65%"  stop-color="#DAA520"/>
+      <stop offset="100%" stop-color="#8B6914"/>
+    </linearGradient>
+
+    <!-- Setting gradient: gold top-to-bottom for the mount -->
+    <linearGradient id="settingGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#FFD700"/>
+      <stop offset="60%"  stop-color="#DAA520"/>
+      <stop offset="100%" stop-color="#B8860B"/>
+    </linearGradient>
+
+    <!-- Diamond main face: icy blue-white -->
+    <linearGradient id="diaMain" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0%"   stop-color="#FFFFFF"/>
+      <stop offset="35%"  stop-color="#D8EFFF"/>
+      <stop offset="100%" stop-color="#5BA4CF"/>
+    </linearGradient>
+
+    <!-- Diamond left face: deeper blue -->
+    <linearGradient id="diaLeft" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#C0E0FF"/>
+      <stop offset="100%" stop-color="#2B6FA0"/>
+    </linearGradient>
+
+    <!-- Diamond right face: bright highlight -->
+    <linearGradient id="diaRight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#7DB8DC"/>
+    </linearGradient>
+
+    <!-- Soft glow for ring band -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+  </defs>
+
+  <!--
+    ══════════════════════════════════════════════════
+    RING BAND — upright circle
+    Center: (60, 92)  Radius: 32  Stroke: 7
+    Gap at top ±41° from 12-o'clock.
+
+    Junction points:
+      Right: (60 + 32·sin41°, 92 − 32·cos41°)
+           ≈ (60 + 21,  92 − 24.2) = (81, 68)
+      Left:  (39, 68)
+
+    Arc: (81,68) large-arc clockwise to (39,68)
+    = the 278° band that forms the horseshoe
+    ══════════════════════════════════════════════════
+  -->
+  <path
+    d="M 81,68 A 32,32 0 1,1 39,68"
+    stroke="url(#bandGrad)"
+    stroke-width="7"
+    stroke-linecap="round"
+    fill="none"
+    filter="url(#glow)"
+  />
+
+  <!--
+    ══════════════════════════════════════════════════
+    SETTING MOUNT — filled trapezoid that fuses the
+    open top of the ring into the diamond base.
+
+    Bottom edge: ring junction width  (35,68)→(85,68)
+    Top edge:    diamond girdle width (40,50)→(80,50)
+
+    The tapered shape reads as a bezel/prong mount.
+    ══════════════════════════════════════════════════
+  -->
+  <path
+    d="M 35,68 L 40,50 L 80,50 L 85,68 Z"
+    fill="url(#settingGrad)"
+    opacity="0.95"
+  />
+
+  <!-- Outer edge lines on the mount for crispness -->
+  <line x1="35" y1="68" x2="40" y2="50" stroke="#8B6914" stroke-width="1" opacity="0.6"/>
+  <line x1="85" y1="68" x2="80" y2="50" stroke="#8B6914" stroke-width="1" opacity="0.6"/>
+
+  <!--
+    ══════════════════════════════════════════════════
+    DIAMOND CROWN — side-profile gem sitting in mount.
+
+    Girdle (widest):  y=50,  x=40…80  (40 units)
+    Crown center convergence: (60, 34)
+    Table top:        y=18,  x=52…68  (16 units)
+
+    Facets:
+      Left face:   (52,18)→(40,50)→(60,34)
+      Right face:  (68,18)→(80,50)→(60,34)
+      Center face: (52,18)→(60,34)→(68,18)
+      Table:       (52,18)→(68,18)→(64,12)→(56,12)
+    ══════════════════════════════════════════════════
+  -->
+
+  <!-- Left face -->
+  <polygon
+    points="52,18 40,50 60,34"
+    fill="url(#diaLeft)"
+    opacity="0.93"
+  />
+
+  <!-- Right face -->
+  <polygon
+    points="68,18 80,50 60,34"
+    fill="url(#diaRight)"
+    opacity="0.93"
+  />
+
+  <!-- Center face -->
+  <polygon
+    points="52,18 60,34 68,18"
+    fill="url(#diaMain)"
+    opacity="0.96"
+  />
+
+  <!-- Table (flat top trapezoid) -->
+  <polygon
+    points="52,18 68,18 64,12 56,12"
+    fill="white"
+    opacity="0.92"
+  />
+
+  <!-- Gem outline for definition -->
+  <polygon
+    points="56,12 64,12 68,18 80,50 40,50 52,18"
+    fill="none"
+    stroke="#4A90C8"
+    stroke-width="1"
+    stroke-linejoin="round"
+  />
+
+  <!-- Table top edge -->
+  <line x1="56" y1="12" x2="64" y2="12" stroke="#4A90C8" stroke-width="0.8"/>
+
+  <!-- Internal facet lines -->
+  <line x1="60" y1="34" x2="52" y2="18" stroke="white"   stroke-width="0.7" opacity="0.75"/>
+  <line x1="60" y1="34" x2="68" y2="18" stroke="white"   stroke-width="0.7" opacity="0.75"/>
+  <line x1="60" y1="34" x2="40" y2="50" stroke="#6EB5E8" stroke-width="0.5" opacity="0.5"/>
+  <line x1="60" y1="34" x2="80" y2="50" stroke="#6EB5E8" stroke-width="0.5" opacity="0.5"/>
+
+  <!-- Table highlight shimmer -->
+  <line x1="56" y1="12" x2="52" y2="18" stroke="white" stroke-width="1" opacity="0.9"/>
+
+</svg>
