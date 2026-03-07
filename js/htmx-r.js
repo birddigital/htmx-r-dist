@@ -24,6 +24,14 @@
  *   data-state-text="{key}"             Render state value as element textContent
  *   data-class-when="{key}:{val}:{cls}" Add CSS classes when state matches; requires
  *                                       data-class-default="{cls}" for the inactive state
+ *
+ * Interactive primitives (v1.2):
+ *   hx-state-popover="{key}"            Click-to-toggle with outside-click/Escape dismiss
+ *   hx-state-on-hover="{key}"           Set state true on mouseenter, false on mouseleave
+ *   hx-state-on-hover="{key}:{ms}"      Same with delay (ms) before showing
+ *   data-key-nav="{key}"                Arrow-key navigation through [data-key-nav-item] children
+ *   data-transition="{preset}"          Animate data-when show/hide (fade|slide-down|slide-up|scale)
+ *   data-transition-duration="{ms}"     Custom transition duration (default: 150ms)
  */
 
 (function() {
@@ -328,6 +336,9 @@
     whenElements.forEach(el => {
       const whenAttr = el.getAttribute('data-when');
       const whenValue = whenAttr.substring(key.length + 1); // after "key:"
+      // Skip elements being handled by the transition system
+      if (el.hasAttribute('data-transition') || el.hasAttribute('data-htmxr-transitioning')) return;
+
       if (whenValue === value) {
         el.style.display = '';
         el.removeAttribute('data-htmx-r-hidden');
@@ -463,6 +474,400 @@
     });
   });
 
+  // ── POPOVER / DROPDOWN (v1.2) ────────────────────────────────────────
+
+  /**
+   * hx-state-popover  —  click-to-toggle floating content with outside-click dismiss
+   *
+   * Toggles a state key between "open" and "closed" on click.
+   * Clicking outside the popover container (or pressing Escape) closes it.
+   * This is the foundation for dropdowns, select menus, comboboxes, and popovers.
+   *
+   * Usage:
+   *   <div data-state-menu="closed" hx-ext="reactive">
+   *     <button hx-state-popover="menu">Toggle</button>
+   *     <div data-when="menu:open" class="dropdown-panel">
+   *       ... dropdown content ...
+   *     </div>
+   *   </div>
+   *
+   * The attribute goes on the trigger element. The container must declare
+   * data-state-{key}="closed". Content shown via data-when="{key}:open".
+   */
+  document.addEventListener('click', function(e) {
+    var trigger = e.target.closest('[hx-state-popover]');
+
+    if (trigger) {
+      e.stopPropagation();
+      var key = trigger.getAttribute('hx-state-popover').trim();
+      var container = findStateContainer(trigger, key);
+      if (!container) return;
+
+      var current = container.getAttribute('data-state-' + key);
+      var next = current === 'open' ? 'closed' : 'open';
+
+      container.setAttribute('data-state-' + key, next);
+      persistState(container, key, next);
+      syncToURL(container, key, next);
+      container.dispatchEvent(new CustomEvent('htmx-r:state-change', {
+        detail: { key: key, value: next, element: trigger },
+        bubbles: true
+      }));
+      return;
+    }
+
+    // Outside-click: close any open popovers
+    var openContainers = document.querySelectorAll('[hx-state-popover]');
+    var seen = new Set();
+    openContainers.forEach(function(el) {
+      var key = el.getAttribute('hx-state-popover').trim();
+      var container = findStateContainer(el, key);
+      if (!container || seen.has(container)) return;
+      seen.add(container);
+
+      if (container.getAttribute('data-state-' + key) === 'open') {
+        // Only close if click is outside the container
+        if (!container.contains(e.target)) {
+          container.setAttribute('data-state-' + key, 'closed');
+          persistState(container, key, 'closed');
+          syncToURL(container, key, 'closed');
+          container.dispatchEvent(new CustomEvent('htmx-r:state-change', {
+            detail: { key: key, value: 'closed', element: el },
+            bubbles: true
+          }));
+        }
+      }
+    });
+  });
+
+  // Escape key closes all open popovers
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    var triggers = document.querySelectorAll('[hx-state-popover]');
+    var seen = new Set();
+    triggers.forEach(function(el) {
+      var key = el.getAttribute('hx-state-popover').trim();
+      var container = findStateContainer(el, key);
+      if (!container || seen.has(container)) return;
+      seen.add(container);
+
+      if (container.getAttribute('data-state-' + key) === 'open') {
+        container.setAttribute('data-state-' + key, 'closed');
+        persistState(container, key, 'closed');
+        syncToURL(container, key, 'closed');
+        container.dispatchEvent(new CustomEvent('htmx-r:state-change', {
+          detail: { key: key, value: 'closed', element: el },
+          bubbles: true
+        }));
+      }
+    });
+  });
+
+  // ── HOVER TRIGGER (v1.2) ────────────────────────────────────────────
+
+  /**
+   * hx-state-on-hover="{key}"  —  set state on mouseenter, clear on mouseleave
+   *
+   * Sets the state key to "true" on mouseenter and "false" on mouseleave.
+   * Perfect for tooltips, hover cards, and preview popups.
+   *
+   * Usage:
+   *   <div data-state-tip="false" hx-ext="reactive">
+   *     <span hx-state-on-hover="tip">Hover me</span>
+   *     <div data-when="tip:true" class="tooltip">Tooltip content</div>
+   *   </div>
+   *
+   * Optional delay (ms) to prevent flicker:
+   *   hx-state-on-hover="tip:300"   — 300ms delay before showing
+   */
+  var hoverTimers = new WeakMap();
+
+  document.addEventListener('mouseenter', function(e) {
+    var el = e.target.closest('[hx-state-on-hover]');
+    if (!el) return;
+
+    var attr = el.getAttribute('hx-state-on-hover').trim();
+    var colonIdx = attr.indexOf(':');
+    var key   = colonIdx === -1 ? attr : attr.slice(0, colonIdx).trim();
+    var delay = colonIdx === -1 ? 0   : parseInt(attr.slice(colonIdx + 1), 10) || 0;
+
+    var container = findStateContainer(el, key);
+    if (!container) return;
+
+    // Clear any pending mouseleave timer
+    var timers = hoverTimers.get(el) || {};
+    if (timers.leave) { clearTimeout(timers.leave); timers.leave = null; }
+
+    var apply = function() {
+      container.setAttribute('data-state-' + key, 'true');
+      persistState(container, key, 'true');
+      container.dispatchEvent(new CustomEvent('htmx-r:state-change', {
+        detail: { key: key, value: 'true', element: el },
+        bubbles: true
+      }));
+    };
+
+    if (delay > 0) {
+      timers.enter = setTimeout(apply, delay);
+      hoverTimers.set(el, timers);
+    } else {
+      apply();
+    }
+  }, true);
+
+  document.addEventListener('mouseleave', function(e) {
+    var el = e.target.closest('[hx-state-on-hover]');
+    if (!el) return;
+
+    var attr = el.getAttribute('hx-state-on-hover').trim();
+    var colonIdx = attr.indexOf(':');
+    var key = colonIdx === -1 ? attr : attr.slice(0, colonIdx).trim();
+
+    var container = findStateContainer(el, key);
+    if (!container) return;
+
+    var timers = hoverTimers.get(el) || {};
+    if (timers.enter) { clearTimeout(timers.enter); timers.enter = null; }
+
+    // Small delay on leave to allow moving into tooltip content
+    timers.leave = setTimeout(function() {
+      container.setAttribute('data-state-' + key, 'false');
+      persistState(container, key, 'false');
+      container.dispatchEvent(new CustomEvent('htmx-r:state-change', {
+        detail: { key: key, value: 'false', element: el },
+        bubbles: true
+      }));
+    }, 100);
+    hoverTimers.set(el, timers);
+  }, true);
+
+  // ── KEYBOARD NAVIGATION (v1.2) ──────────────────────────────────────
+
+  /**
+   * data-key-nav="{key}"  —  arrow key navigation through child items
+   *
+   * Tracks the active item index in a state key. Arrow Up/Down moves through
+   * children marked with [data-key-nav-item]. Enter dispatches a click on
+   * the active item. Home/End jump to first/last.
+   *
+   * Usage:
+   *   <div data-state-active="0" hx-ext="reactive" data-key-nav="active">
+   *     <div data-key-nav-item data-class-when="active:0:bg-blue-600" data-class-default="bg-transparent">Item 0</div>
+   *     <div data-key-nav-item data-class-when="active:1:bg-blue-600" data-class-default="bg-transparent">Item 1</div>
+   *     <div data-key-nav-item data-class-when="active:2:bg-blue-600" data-class-default="bg-transparent">Item 2</div>
+   *   </div>
+   *
+   * Works with data-class-when for highlighting the active item.
+   * The container must be focusable (tabindex="0") or contain a focused input.
+   */
+  document.addEventListener('keydown', function(e) {
+    var nav = e.target.closest('[data-key-nav]');
+    if (!nav) return;
+
+    var validKeys = ['ArrowUp', 'ArrowDown', 'Enter', 'Home', 'End'];
+    if (validKeys.indexOf(e.key) === -1) return;
+
+    var key = nav.getAttribute('data-key-nav').trim();
+    var items = nav.querySelectorAll('[data-key-nav-item]');
+    if (items.length === 0) return;
+
+    var current = parseInt(nav.getAttribute('data-state-' + key), 10) || 0;
+    var next = current;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        next = (current + 1) % items.length;
+        e.preventDefault();
+        break;
+      case 'ArrowUp':
+        next = (current - 1 + items.length) % items.length;
+        e.preventDefault();
+        break;
+      case 'Home':
+        next = 0;
+        e.preventDefault();
+        break;
+      case 'End':
+        next = items.length - 1;
+        e.preventDefault();
+        break;
+      case 'Enter':
+        if (items[current]) {
+          items[current].click();
+        }
+        e.preventDefault();
+        return;
+    }
+
+    if (next !== current) {
+      var value = String(next);
+      nav.setAttribute('data-state-' + key, value);
+      persistState(nav, key, value);
+      syncToURL(nav, key, value);
+      nav.dispatchEvent(new CustomEvent('htmx-r:state-change', {
+        detail: { key: key, value: value, element: nav },
+        bubbles: true
+      }));
+
+      // Scroll active item into view
+      if (items[next] && items[next].scrollIntoView) {
+        items[next].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  });
+
+  // ── CSS TRANSITIONS (v1.2) ──────────────────────────────────────────
+
+  /**
+   * data-transition  —  animate data-when show/hide with CSS classes
+   *
+   * Instead of instant display:none/block, applies enter/leave transition
+   * classes so elements can fade, slide, or scale in/out.
+   *
+   * Usage:
+   *   <div data-when="menu:open"
+   *        data-transition="fade"
+   *        data-transition-duration="200">
+   *     Animated content
+   *   </div>
+   *
+   * Built-in transition presets:
+   *   "fade"       — opacity 0→1 / 1→0
+   *   "slide-down" — translateY(-8px)→0 + opacity
+   *   "slide-up"   — translateY(8px)→0 + opacity
+   *   "scale"      — scale(0.95)→1 + opacity
+   *
+   * Custom classes (advanced):
+   *   data-transition-enter="opacity-0"
+   *   data-transition-enter-active="transition-opacity duration-200"
+   *   data-transition-enter-to="opacity-100"
+   *   data-transition-leave="opacity-100"
+   *   data-transition-leave-active="transition-opacity duration-200"
+   *   data-transition-leave-to="opacity-0"
+   */
+  var transitionPresets = {
+    'fade': {
+      enter: 'htmxr-fade-enter',
+      enterActive: 'htmxr-fade-enter-active',
+      leave: 'htmxr-fade-leave',
+      leaveActive: 'htmxr-fade-leave-active'
+    },
+    'slide-down': {
+      enter: 'htmxr-slide-down-enter',
+      enterActive: 'htmxr-slide-down-enter-active',
+      leave: 'htmxr-slide-down-leave',
+      leaveActive: 'htmxr-slide-down-leave-active'
+    },
+    'slide-up': {
+      enter: 'htmxr-slide-up-enter',
+      enterActive: 'htmxr-slide-up-enter-active',
+      leave: 'htmxr-slide-up-leave',
+      leaveActive: 'htmxr-slide-up-leave-active'
+    },
+    'scale': {
+      enter: 'htmxr-scale-enter',
+      enterActive: 'htmxr-scale-enter-active',
+      leave: 'htmxr-scale-leave',
+      leaveActive: 'htmxr-scale-leave-active'
+    }
+  };
+
+  // Inject transition CSS once
+  var transitionStyleId = 'htmxr-transition-styles';
+  if (!document.getElementById(transitionStyleId)) {
+    var style = document.createElement('style');
+    style.id = transitionStyleId;
+    style.textContent =
+      /* fade */
+      '.htmxr-fade-enter { opacity: 0; }' +
+      '.htmxr-fade-enter-active { transition: opacity var(--htmxr-duration, 150ms) ease-out; opacity: 1; }' +
+      '.htmxr-fade-leave { opacity: 1; }' +
+      '.htmxr-fade-leave-active { transition: opacity var(--htmxr-duration, 150ms) ease-in; opacity: 0; }' +
+      /* slide-down */
+      '.htmxr-slide-down-enter { opacity: 0; transform: translateY(-8px); }' +
+      '.htmxr-slide-down-enter-active { transition: opacity var(--htmxr-duration, 150ms) ease-out, transform var(--htmxr-duration, 150ms) ease-out; opacity: 1; transform: translateY(0); }' +
+      '.htmxr-slide-down-leave { opacity: 1; transform: translateY(0); }' +
+      '.htmxr-slide-down-leave-active { transition: opacity var(--htmxr-duration, 150ms) ease-in, transform var(--htmxr-duration, 150ms) ease-in; opacity: 0; transform: translateY(-8px); }' +
+      /* slide-up */
+      '.htmxr-slide-up-enter { opacity: 0; transform: translateY(8px); }' +
+      '.htmxr-slide-up-enter-active { transition: opacity var(--htmxr-duration, 150ms) ease-out, transform var(--htmxr-duration, 150ms) ease-out; opacity: 1; transform: translateY(0); }' +
+      '.htmxr-slide-up-leave { opacity: 1; transform: translateY(0); }' +
+      '.htmxr-slide-up-leave-active { transition: opacity var(--htmxr-duration, 150ms) ease-in, transform var(--htmxr-duration, 150ms) ease-in; opacity: 0; transform: translateY(8px); }' +
+      /* scale */
+      '.htmxr-scale-enter { opacity: 0; transform: scale(0.95); }' +
+      '.htmxr-scale-enter-active { transition: opacity var(--htmxr-duration, 150ms) ease-out, transform var(--htmxr-duration, 150ms) ease-out; opacity: 1; transform: scale(1); }' +
+      '.htmxr-scale-leave { opacity: 1; transform: scale(1); }' +
+      '.htmxr-scale-leave-active { transition: opacity var(--htmxr-duration, 150ms) ease-in, transform var(--htmxr-duration, 150ms) ease-in; opacity: 0; transform: scale(0.95); }';
+    document.head.appendChild(style);
+  }
+
+  // Override the data-when handler to support transitions
+  // We patch the state-change listener to intercept data-when elements that have data-transition
+  document.addEventListener('htmx-r:state-change', function(e) {
+    var key = e.detail.key;
+    var value = e.detail.value;
+    var container = e.target;
+
+    var whenElements = container.querySelectorAll('[data-when^="' + key + ':"][data-transition]');
+    whenElements.forEach(function(el) {
+      var whenAttr = el.getAttribute('data-when');
+      var whenValue = whenAttr.substring(key.length + 1);
+      var preset = el.getAttribute('data-transition');
+      var durationMs = parseInt(el.getAttribute('data-transition-duration'), 10) || 150;
+
+      // Set CSS variable for duration
+      el.style.setProperty('--htmxr-duration', durationMs + 'ms');
+
+      var classes = transitionPresets[preset];
+      if (!classes) return; // not a recognized preset, skip
+
+      // Mark this element so the default data-when handler skips it
+      el.setAttribute('data-htmxr-transitioning', 'true');
+
+      if (whenValue === value) {
+        // ENTER: show with transition
+        el.style.display = '';
+        el.removeAttribute('data-htmx-r-hidden');
+
+        // Apply enter start state
+        el.classList.add(classes.enter);
+        el.classList.remove(classes.leaveActive, classes.leave);
+
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            el.classList.remove(classes.enter);
+            el.classList.add(classes.enterActive);
+          });
+        });
+
+        // Clean up after transition
+        setTimeout(function() {
+          el.classList.remove(classes.enterActive);
+          el.removeAttribute('data-htmxr-transitioning');
+        }, durationMs + 20);
+
+      } else if (el.style.display !== 'none' && !el.hasAttribute('data-htmx-r-hidden')) {
+        // LEAVE: hide with transition (only if currently visible)
+        el.classList.add(classes.leave);
+        el.classList.remove(classes.enterActive, classes.enter);
+
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            el.classList.remove(classes.leave);
+            el.classList.add(classes.leaveActive);
+          });
+        });
+
+        setTimeout(function() {
+          el.style.display = 'none';
+          el.setAttribute('data-htmx-r-hidden', 'true');
+          el.classList.remove(classes.leaveActive);
+          el.removeAttribute('data-htmxr-transitioning');
+        }, durationMs + 20);
+      }
+    });
+  });
+
   // ── INITIALIZATION ────────────────────────────────────────────────────
 
   // Find all state containers in a subtree (universal — no hardcoded names)
@@ -547,5 +952,5 @@
     }
   };
 
-  console.log('✓ HTMX-R (Reactive) v1.1 loaded — input binding, state-text, class-when');
+  console.log('✓ HTMX-R (Reactive) v1.2 loaded — popover, hover, key-nav, transitions');
 })();
