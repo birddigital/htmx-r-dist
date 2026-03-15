@@ -9,6 +9,9 @@
  *     HtmxRWhatsappManager.init('wa-panel', { endpoint: 'http://localhost:8131' })
  *   </script>
  *
+ * Note: QR codes are rendered as base64 PNG images provided by wa-manager.
+ * No client-side qrcode library is required.
+ *
  * API endpoints consumed:
  *   GET  {endpoint}/accounts                  → [{slot, status, port, label}]
  *   GET  {endpoint}/accounts/pair             → SSE: slot, qr, paired, timeout, error
@@ -479,7 +482,6 @@ const HtmxRWhatsappManager = (() => {
     }
 
     async function removeSlot(slot) {
-      if (!confirm(`Remove WhatsApp account in slot ${slot}? This cannot be undone.`)) return;
       await apiFetch(`/accounts/${slot}`, 'DELETE');
       await loadAccounts();
     }
@@ -536,9 +538,27 @@ const HtmxRWhatsappManager = (() => {
       if (status !== 'unpaired') {
         const removeBtn = el('button', {
           className: 'wa-btn wa-btn--danger wa-btn--sm',
-          onClick: async (e) => {
-            e.currentTarget.disabled = true;
-            try { await removeSlot(slot); } catch { e.currentTarget.disabled = false; }
+          onClick: () => {
+            // Replace with inline confirm row — no blocking confirm() dialog
+            actions.innerHTML = '';
+            const confirmLabel = el('span', {
+              style: `font-size:11px;color:${COLOR.textMuted};align-self:center;`
+            }, 'Remove?');
+            const yesBtn = el('button', {
+              className: 'wa-btn wa-btn--danger wa-btn--sm',
+              onClick: async (e) => {
+                e.currentTarget.disabled = true;
+                try { await removeSlot(slot); } catch { loadAccounts(); }
+              }
+            }, 'Yes');
+            const noBtn = el('button', {
+              className: 'wa-btn wa-btn--ghost wa-btn--sm',
+              onClick: () => loadAccounts(),
+            }, 'No');
+            actions.style.alignItems = 'center';
+            actions.appendChild(confirmLabel);
+            actions.appendChild(yesBtn);
+            actions.appendChild(noBtn);
           }
         }, 'Remove');
         actions.appendChild(removeBtn);
@@ -750,7 +770,8 @@ const HtmxRWhatsappManager = (() => {
     // ── Boot ──
 
     injectStyles();
-    renderPanel();
+    // Render loading skeleton before first fetch so the panel never flashes empty
+    rootEl.innerHTML = `<div class="wa-panel" style="min-height:120px;display:flex;align-items:center;justify-content:center;"><div class="wa-spinner"></div></div>`;
     loadAccounts();
     startAutoRefresh();
 
