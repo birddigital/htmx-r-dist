@@ -3,8 +3,6 @@
  * Account slot management UI for the flow-hq wa-manager service.
  *
  * Usage:
- *   <!-- Include qrcode.js before this file -->
- *   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
  *   <script src="htmx-r-whatsapp-manager.js"></script>
  *   <div id="wa-panel"></div>
  *   <script>
@@ -639,32 +637,11 @@ const HtmxRWhatsappManager = (() => {
       setModalBody(bodyEl, [spinner, txt]);
     }
 
-    function renderQR(bodyEl, qrText) {
-      bodyEl.innerHTML = '';
-
+    function renderQR(bodyEl, dataURL) {
+      // dataURL is a base64 PNG generated server-side — no JS QR library needed.
       const wrap = el('div', { className: 'wa-qr-wrap' });
-      // QRCode renders a canvas inside the target element
-      try {
-        if (typeof QRCode === 'undefined') {
-          throw new Error('qrcode.js not loaded');
-        }
-        // Clear previous QR canvas if any
-        wrap.innerHTML = '';
-        new QRCode(wrap, {
-          text: qrText,
-          width: 256,
-          height: 256,
-          colorDark: '#000000',
-          colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.M,
-        });
-      } catch (err) {
-        const errEl = el('p', { className: 'wa-status-text--error', style: 'color:#fca5a5;' },
-          `QR render failed: ${err.message}`);
-        bodyEl.appendChild(errEl);
-        return;
-      }
-
+      const img = el('img', { src: dataURL, width: '256', height: '256', alt: 'WhatsApp QR code' });
+      wrap.appendChild(img);
       const hint = el('p', { className: 'wa-status-text' },
         'Scan with WhatsApp → Linked Devices → Link a Device');
       setModalBody(bodyEl, [wrap, hint]);
