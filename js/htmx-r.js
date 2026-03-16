@@ -30,8 +30,10 @@
  *   hx-state-on-hover="{key}"           Set state true on mouseenter, false on mouseleave
  *   hx-state-on-hover="{key}:{ms}"      Same with delay (ms) before showing
  *   data-key-nav="{key}"                Arrow-key navigation through [data-key-nav-item] children
- *   data-transition="{preset}"          Animate data-when show/hide (fade|slide-down|slide-up|scale)
+ *   data-transition="{preset}"          Animate data-when show/hide (fade|slide-down|slide-up|slide-left|slide-right|scale)
  *   data-transition-duration="{ms}"     Custom transition duration (default: 150ms)
+ *   data-when-transition="{key}:{value}" Like data-when but uses visibility+transform instead of display:none,
+ *                                        preserving CSS transitions. Requires data-transition on the same element.
  */
 
 (function() {
@@ -769,6 +771,18 @@
       enterActive: 'htmxr-scale-enter-active',
       leave: 'htmxr-scale-leave',
       leaveActive: 'htmxr-scale-leave-active'
+    },
+    'slide-left': {
+      enter: 'htmxr-slide-left-enter',
+      enterActive: 'htmxr-slide-left-enter-active',
+      leave: 'htmxr-slide-left-leave',
+      leaveActive: 'htmxr-slide-left-leave-active'
+    },
+    'slide-right': {
+      enter: 'htmxr-slide-right-enter',
+      enterActive: 'htmxr-slide-right-enter-active',
+      leave: 'htmxr-slide-right-leave',
+      leaveActive: 'htmxr-slide-right-leave-active'
     }
   };
 
@@ -797,7 +811,17 @@
       '.htmxr-scale-enter { opacity: 0; transform: scale(0.95); }' +
       '.htmxr-scale-enter-active { transition: opacity var(--htmxr-duration, 150ms) ease-out, transform var(--htmxr-duration, 150ms) ease-out; opacity: 1; transform: scale(1); }' +
       '.htmxr-scale-leave { opacity: 1; transform: scale(1); }' +
-      '.htmxr-scale-leave-active { transition: opacity var(--htmxr-duration, 150ms) ease-in, transform var(--htmxr-duration, 150ms) ease-in; opacity: 0; transform: scale(0.95); }';
+      '.htmxr-scale-leave-active { transition: opacity var(--htmxr-duration, 150ms) ease-in, transform var(--htmxr-duration, 150ms) ease-in; opacity: 0; transform: scale(0.95); }' +
+      /* slide-left (sidebar from left edge) */
+      '.htmxr-slide-left-enter { transform: translateX(-100%); }' +
+      '.htmxr-slide-left-enter-active { transition: transform var(--htmxr-duration, 200ms) ease-out; transform: translateX(0); }' +
+      '.htmxr-slide-left-leave { transform: translateX(0); }' +
+      '.htmxr-slide-left-leave-active { transition: transform var(--htmxr-duration, 200ms) ease-in; transform: translateX(-100%); }' +
+      /* slide-right (sidebar from right edge) */
+      '.htmxr-slide-right-enter { transform: translateX(100%); }' +
+      '.htmxr-slide-right-enter-active { transition: transform var(--htmxr-duration, 200ms) ease-out; transform: translateX(0); }' +
+      '.htmxr-slide-right-leave { transform: translateX(0); }' +
+      '.htmxr-slide-right-leave-active { transition: transform var(--htmxr-duration, 200ms) ease-in; transform: translateX(100%); }';
     document.head.appendChild(style);
   }
 
@@ -863,6 +887,87 @@
           el.setAttribute('data-htmx-r-hidden', 'true');
           el.classList.remove(classes.leaveActive);
           el.removeAttribute('data-htmxr-transitioning');
+        }, durationMs + 20);
+      }
+    });
+  });
+
+  // ── data-when-transition  —  visibility-based show/hide (v1.3) ─────
+
+  /**
+   * data-when-transition="{key}:{value}"  —  like data-when but transition-aware
+   *
+   * Uses visibility:hidden + pointer-events:none instead of display:none,
+   * so CSS transitions on transform, opacity, etc. fire correctly.
+   * Requires data-transition="{preset}" on the same element.
+   *
+   * This solves the fundamental problem with data-when + sidebars/drawers:
+   * display:none cannot be animated with CSS transitions.
+   *
+   * Usage (mobile sidebar):
+   *   <aside data-when-transition="sidebar:open"
+   *          data-transition="slide-left"
+   *          data-transition-duration="200"
+   *          class="fixed inset-y-0 left-0 z-30 w-64">
+   *     Sidebar content
+   *   </aside>
+   *
+   * Behavior:
+   *   - When state matches: visibility:visible, pointer-events:auto, run enter transition
+   *   - When state doesn't match: run leave transition, then visibility:hidden, pointer-events:none
+   *   - Element stays in DOM layout (no reflow) — just invisible and non-interactive
+   */
+  document.addEventListener('htmx-r:state-change', function(e) {
+    var key = e.detail.key;
+    var value = e.detail.value;
+    var container = e.target;
+
+    var els = container.querySelectorAll('[data-when-transition^="' + key + ':"]');
+    els.forEach(function(el) {
+      var attr = el.getAttribute('data-when-transition');
+      var whenValue = attr.substring(key.length + 1);
+      var preset = el.getAttribute('data-transition') || 'fade';
+      var durationMs = parseInt(el.getAttribute('data-transition-duration'), 10) || 200;
+      var classes = transitionPresets[preset];
+      if (!classes) return;
+
+      el.style.setProperty('--htmxr-duration', durationMs + 'ms');
+
+      if (whenValue === value) {
+        // ENTER: make visible and animate in
+        el.style.visibility = 'visible';
+        el.style.pointerEvents = 'auto';
+
+        el.classList.remove(classes.leaveActive, classes.leave);
+        el.classList.add(classes.enter);
+
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            el.classList.remove(classes.enter);
+            el.classList.add(classes.enterActive);
+          });
+        });
+
+        setTimeout(function() {
+          el.classList.remove(classes.enterActive);
+        }, durationMs + 20);
+
+      } else {
+        // LEAVE: animate out then hide
+        el.classList.remove(classes.enterActive, classes.enter);
+        el.classList.add(classes.leave);
+
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            el.classList.remove(classes.leave);
+            el.classList.add(classes.leaveActive);
+          });
+        });
+
+        setTimeout(function() {
+          el.style.visibility = 'hidden';
+          el.style.pointerEvents = 'none';
+          el.classList.remove(classes.leaveActive);
         }, durationMs + 20);
       }
     });
@@ -952,5 +1057,5 @@
     }
   };
 
-  console.log('✓ HTMX-R (Reactive) v1.2 loaded — popover, hover, key-nav, transitions');
+  console.log('✓ HTMX-R (Reactive) v1.3 loaded — slide-left/right, data-when-transition');
 })();
