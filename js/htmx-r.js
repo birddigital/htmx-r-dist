@@ -34,6 +34,10 @@
  *   data-transition-duration="{ms}"     Custom transition duration (default: 150ms)
  *   data-when-transition="{key}:{value}" Like data-when but uses visibility+transform instead of display:none,
  *                                        preserving CSS transitions. Requires data-transition on the same element.
+ *
+ * CSS property binding (v1.4):
+ *   hx-state-css-var="{key}:--{var}"    Set CSS custom property on element when state changes
+ *   hx-state-css-var="{k1}:--{v1}, {k2}:--{v2}"  Multiple bindings (comma-separated)
  */
 
 (function() {
@@ -417,6 +421,50 @@
     // (not just inside the container — allows text displays to live outside state scope)
     document.querySelectorAll('[data-state-text="' + key + '"]').forEach(function(el) {
       el.textContent = value;
+    });
+  });
+
+  /**
+   * hx-state-css-var  —  state → CSS custom property binding (v1.4)
+   *
+   * Sets one or more CSS custom properties on an element whenever a state key
+   * changes. Enables fully declarative, state-driven CSS layout (grid columns,
+   * sizing, theming) without any JavaScript class manipulation.
+   *
+   * Format:
+   *   hx-state-css-var="{key}:--{var-name}"
+   *   hx-state-css-var="{key}:--{var-name}, {key2}:--{var2}"   (comma-separated)
+   *
+   * Example — adjustable grid columns driven by a range slider:
+   *   <!-- State container -->
+   *   <div data-state-cols="5" hx-ext="reactive">
+   *     <input type="range" min="1" max="8" value="5" hx-state-on-input="cols">
+   *     <span data-state-text="cols">5</span> cols
+   *     <!-- CSS var set on this element; CSS reads it via var() -->
+   *     <div class="grid" hx-state-css-var="cols:--grid-cols">...</div>
+   *   </div>
+   *   <style>
+   *     .grid { grid-template-columns: repeat(var(--grid-cols, 5), 1fr); }
+   *   </style>
+   *
+   * The property is set directly on the element's inline style so it is scoped
+   * to that subtree — descendants can inherit it via var(), siblings cannot.
+   *
+   * Multiple bindings on one element:
+   *   hx-state-css-var="cols:--grid-cols, gap:--grid-gap"
+   */
+  document.addEventListener('htmx-r:state-change', function(e) {
+    const { key, value } = e.detail;
+    document.querySelectorAll('[hx-state-css-var]').forEach(function(el) {
+      el.getAttribute('hx-state-css-var').split(',').forEach(function(binding) {
+        const sep   = binding.trim().indexOf(':');
+        if (sep < 0) return;
+        const bKey  = binding.trim().slice(0, sep).trim();
+        const bVar  = binding.trim().slice(sep + 1).trim();
+        if (bKey === key) {
+          el.style.setProperty(bVar, value);
+        }
+      });
     });
   });
 
@@ -1057,5 +1105,5 @@
     }
   };
 
-  console.log('✓ HTMX-R (Reactive) v1.3 loaded — slide-left/right, data-when-transition');
+  console.log('✓ HTMX-R (Reactive) v1.4 loaded — hx-state-css-var CSS property binding');
 })();
