@@ -455,7 +455,10 @@
    */
   document.addEventListener('htmx-r:state-change', function(e) {
     const { key, value } = e.detail;
-    document.querySelectorAll('[hx-state-css-var]').forEach(function(el) {
+    // Scope to the emitting state container so two independent widgets that
+    // happen to share a key name don't bleed CSS vars into each other.
+    const scope = e.detail.element || document;
+    scope.querySelectorAll('[hx-state-css-var]').forEach(function(el) {
       el.getAttribute('hx-state-css-var').split(',').forEach(function(binding) {
         const sep   = binding.trim().indexOf(':');
         if (sep < 0) return;
@@ -983,6 +986,7 @@
 
       if (whenValue === value) {
         // ENTER: make visible and animate in
+        el.setAttribute('data-htmxr-wt-seen', '');
         el.style.visibility = 'visible';
         el.style.pointerEvents = 'auto';
 
@@ -1001,7 +1005,16 @@
         }, durationMs + 20);
 
       } else {
-        // LEAVE: animate out then hide
+        // LEAVE: hide immediately on first encounter (initial state sync on load)
+        // so elements that start hidden don't flash visible then animate away.
+        // On subsequent state changes, run the full leave transition.
+        if (!el.hasAttribute('data-htmxr-wt-seen')) {
+          el.style.visibility = 'hidden';
+          el.style.pointerEvents = 'none';
+          el.setAttribute('data-htmxr-wt-seen', '');
+          return;
+        }
+
         el.classList.remove(classes.enterActive, classes.enter);
         el.classList.add(classes.leave);
 
