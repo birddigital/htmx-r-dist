@@ -694,6 +694,83 @@
     hoverTimers.set(el, timers);
   }, true);
 
+  // ── HOVER VALUE (v1.5) ──────────────────────────────────────────────
+
+  /**
+   * hx-state-on-hover-value="{key}:{value}"
+   * hx-state-on-hover-value="{key}:{value}:{delay-ms}"
+   *
+   * Like hx-state-on-hover but sets a specific named value instead of "true"/"false".
+   * On mouseenter: immediately sets state key to the given value.
+   * On mouseleave: after delay (default 100ms), resets to "" — but ONLY if the state
+   *   still equals this value, preventing a late timer from clobbering state set by a
+   *   different hovered element sharing the same key.
+   *
+   * Purpose: mutually-exclusive hover patterns such as navigation mega-panels where
+   * multiple triggers (nav links + the panels themselves) share one "active panel" key.
+   *
+   * Usage (nav mega-panels):
+   *   <body data-state-nav-panel="">
+   *     <a hx-state-on-hover-value="nav-panel:diamonds:150">Diamonds</a>
+   *     <div data-when-transition="nav-panel:diamonds" data-transition="slide-down"
+   *          hx-state-on-hover-value="nav-panel:diamonds:150">
+   *       Panel stays open while you hover it
+   *     </div>
+   *   </body>
+   */
+  var hoverValueTimers = new WeakMap();
+
+  document.addEventListener('mouseenter', function(e) {
+    var el = e.target.closest('[hx-state-on-hover-value]');
+    if (!el) return;
+
+    var parts = el.getAttribute('hx-state-on-hover-value').trim().split(':');
+    if (parts.length < 2) return;
+    var key   = parts[0].trim();
+    var value = parts[1].trim();
+
+    var container = findStateContainer(el, key);
+    if (!container) return;
+
+    var timers = hoverValueTimers.get(el) || {};
+    if (timers.leave) { clearTimeout(timers.leave); timers.leave = null; }
+    hoverValueTimers.set(el, timers);
+
+    container.setAttribute('data-state-' + key, value);
+    persistState(container, key, value);
+    container.dispatchEvent(new CustomEvent('htmx-r:state-change', {
+      detail: { key: key, value: value, element: el },
+      bubbles: true
+    }));
+  }, true);
+
+  document.addEventListener('mouseleave', function(e) {
+    var el = e.target.closest('[hx-state-on-hover-value]');
+    if (!el) return;
+
+    var parts = el.getAttribute('hx-state-on-hover-value').trim().split(':');
+    if (parts.length < 2) return;
+    var key   = parts[0].trim();
+    var value = parts[1].trim();
+    var delay = parts.length >= 3 ? (parseInt(parts[2], 10) || 100) : 100;
+
+    var container = findStateContainer(el, key);
+    if (!container) return;
+
+    var timers = hoverValueTimers.get(el) || {};
+    timers.leave = setTimeout(function() {
+      if (container.getAttribute('data-state-' + key) === value) {
+        container.setAttribute('data-state-' + key, '');
+        persistState(container, key, '');
+        container.dispatchEvent(new CustomEvent('htmx-r:state-change', {
+          detail: { key: key, value: '', element: el },
+          bubbles: true
+        }));
+      }
+    }, delay);
+    hoverValueTimers.set(el, timers);
+  }, true);
+
   // ── KEYBOARD NAVIGATION (v1.2) ──────────────────────────────────────
 
   /**
@@ -1118,5 +1195,5 @@
     }
   };
 
-  console.log('✓ HTMX-R (Reactive) v1.4 loaded — hx-state-css-var CSS property binding');
+  console.log('✓ HTMX-R (Reactive) v1.5 loaded — hx-state-on-hover-value mutually-exclusive hover state');
 })();
