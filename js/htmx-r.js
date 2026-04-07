@@ -702,9 +702,11 @@
    *
    * Like hx-state-on-hover but sets a specific named value instead of "true"/"false".
    * On mouseenter: immediately sets state key to the given value.
-   * On mouseleave: after delay (default 100ms), resets to "" — but ONLY if the state
-   *   still equals this value, preventing a late timer from clobbering state set by a
-   *   different hovered element sharing the same key.
+   * On mouseleave: after delay (default 100ms), resets to "".
+   *
+   * Leave timers are tracked per container+key (not per element). Any mouseenter
+   * for the same container+key cancels ALL pending leave timers for that slot,
+   * preventing the trigger's leave timer from closing the panel while it is hovered.
    *
    * Purpose: mutually-exclusive hover patterns such as navigation mega-panels where
    * multiple triggers (nav links + the panels themselves) share one "active panel" key.
@@ -718,7 +720,15 @@
    *     </div>
    *   </body>
    */
-  var hoverValueTimers = new WeakMap();
+  // container → Map<key, timeoutId>  — one active leave-timer slot per container+key
+  var hoverValueLeaveTimers = new WeakMap();
+
+  function cancelHoverLeaveTimer(container, key) {
+    var byKey = hoverValueLeaveTimers.get(container);
+    if (!byKey) return;
+    var id = byKey.get(key);
+    if (id != null) { clearTimeout(id); byKey.delete(key); }
+  }
 
   document.addEventListener('mouseenter', function(e) {
     var el = e.target.closest('[hx-state-on-hover-value]');
@@ -732,9 +742,8 @@
     var container = findStateContainer(el, key);
     if (!container) return;
 
-    var timers = hoverValueTimers.get(el) || {};
-    if (timers.leave) { clearTimeout(timers.leave); timers.leave = null; }
-    hoverValueTimers.set(el, timers);
+    // Cancel any pending leave timer for this container+key (from any element)
+    cancelHoverLeaveTimer(container, key);
 
     container.setAttribute('data-state-' + key, value);
     persistState(container, key, value);
@@ -757,8 +766,14 @@
     var container = findStateContainer(el, key);
     if (!container) return;
 
-    var timers = hoverValueTimers.get(el) || {};
-    timers.leave = setTimeout(function() {
+    // Cancel any existing timer for this slot before scheduling a new one
+    cancelHoverLeaveTimer(container, key);
+
+    var byKey = hoverValueLeaveTimers.get(container);
+    if (!byKey) { byKey = new Map(); hoverValueLeaveTimers.set(container, byKey); }
+
+    var id = setTimeout(function() {
+      byKey.delete(key);
       if (container.getAttribute('data-state-' + key) === value) {
         container.setAttribute('data-state-' + key, '');
         persistState(container, key, '');
@@ -768,7 +783,7 @@
         }));
       }
     }, delay);
-    hoverValueTimers.set(el, timers);
+    byKey.set(key, id);
   }, true);
 
   // ── KEYBOARD NAVIGATION (v1.2) ──────────────────────────────────────
